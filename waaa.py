@@ -5,6 +5,7 @@ import time
 import os
 import re
 import sys
+import io
 from colorama import init, Fore
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -14,6 +15,10 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 
+# ✅ Fix UTF-8 encoding for input/output
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
+
 init(autoreset=True)
 
 class WhatsAppSender:
@@ -21,6 +26,7 @@ class WhatsAppSender:
         self.phone_number = ""
         self.message = ""
         self.count = 0
+        self.mode = 2
         self.driver = None
 
     def clear_screen(self):
@@ -80,6 +86,7 @@ class WhatsAppSender:
         print(Fore.WHITE + "           W H A T S A P P   S E N D E R")
         print(Fore.CYAN + "═" * 68 + "\n")
         print(Fore.MAGENTA + "📝 ENTER REQUIRED INFORMATION:\n")
+
         while True:
             phone_input = input(Fore.WHITE + "📱 Phone number (example: +20123456789): ").strip()
             self.phone_number = self.format_phone(phone_input)
@@ -87,15 +94,33 @@ class WhatsAppSender:
                 break
             else:
                 print(Fore.RED + "❌ Invalid phone number format!")
+
         self.message = input(Fore.WHITE + "💬 Message: ").strip()
+
+        print(Fore.YELLOW + "\n🔘 Choose sending mode:")
+        print(Fore.WHITE + "   1️⃣  Send one message containing multiple lines")
+        print(Fore.WHITE + "   2️⃣  Send multiple separate messages")
+
+        while True:
+            choice = input(Fore.CYAN + "👉 Enter your choice (1 or 2): ").strip()
+            if choice in ['1', '2']:
+                self.mode = int(choice)
+                break
+            else:
+                print(Fore.RED + "❌ Invalid choice! Please enter 1 or 2")
+
         while True:
             try:
-                self.count = int(input(Fore.WHITE + "🔢 Number of messages: ").strip())
+                self.count = int(input(Fore.WHITE + "🔢 Number of messages/lines: ").strip())
                 if self.count > 0:
                     break
                 print(Fore.RED + "❌ Number must be greater than zero!")
             except ValueError:
                 print(Fore.RED + "❌ Please enter a valid number!")
+
+        if self.mode == 1:
+            self.message = "\n".join([self.message for _ in range(self.count)])
+            self.count = 1
 
     def format_phone(self, phone):
         phone = re.sub(r'[^\d+]', '', phone)
@@ -128,12 +153,12 @@ class WhatsAppSender:
             return False
 
     def send_messages(self):
-        print(Fore.BLUE + f"\n🚀 Starting to send {self.count} messages...")
+        print(Fore.BLUE + f"\n🚀 Starting to send {self.count} message(s)...")
         print(Fore.WHITE + "⏰ Each message will be typed and sent individually")
         print(Fore.WHITE + "⏳ Delay: 100ms between messages\n")
 
         js_code = f"""
-        const message = "{self.message.replace('"', '\\"')}";
+        const message = `{self.message}`;
         const times = {self.count};
         const delay = 100;
         const inputBox = document.querySelector('[contenteditable="true"][data-tab="10"], [contenteditable="true"][data-tab="6"]');
@@ -148,7 +173,14 @@ class WhatsAppSender:
             for (let i = 0; i < times; i++) {{
                 inputBox.focus();
                 inputBox.innerHTML = '';
-                document.execCommand("insertText", false, message);
+                const lines = message.split('\\n');
+                for (const [index, line] of lines.entries()) {{
+                    document.execCommand("insertText", false, line);
+                    if (index < lines.length - 1) {{
+                        const shiftEnterEvent = new KeyboardEvent('keydown', {{ key: 'Enter', code: 'Enter', shiftKey: true, bubbles: true }});
+                        inputBox.dispatchEvent(shiftEnterEvent);
+                    }}
+                }}
                 await delayMs(50);
                 const sendButton = sendButtonSelector();
                 if (sendButton) {{
@@ -170,13 +202,12 @@ class WhatsAppSender:
         self.driver.set_script_timeout(600)
         try:
             result = self.driver.execute_script(js_code)
-            print(Fore.GREEN + f"\n🎉 Successfully sent {result} messages!\n")
+            print(Fore.GREEN + f"\n🎉 Successfully sent {result} message(s)!\n")
             print(Fore.YELLOW + "💡 Browser will stay open. Press Ctrl+C to stop manually.\n")
             while True:
                 time.sleep(1)
         except Exception as e:
             print(Fore.RED + f"\n💥 Process completed with errors: {e}")
-            print(Fore.YELLOW + "⚠️ Browser will remain open for inspection.")
             while True:
                 time.sleep(1)
 
@@ -189,9 +220,15 @@ class WhatsAppSender:
         self.get_user_input()
         print(Fore.CYAN + "\n📋 SENDING SUMMARY:")
         print(Fore.WHITE + f"   📱 Phone: {self.phone_number}")
-        print(Fore.WHITE + f"   💬 Message: {self.message}")
+        print(Fore.WHITE + f"   💬 Message: {self.message[:50]}{'...' if len(self.message) > 50 else ''}")
         print(Fore.WHITE + f"   🔢 Count: {self.count}")
-        confirm = input(Fore.YELLOW + "\n🎯 Start sending? (y/n): ").strip().lower()
+
+        while True:
+            confirm = input(Fore.YELLOW + "\n🎯 Start sending? (y/n): ").strip().lower()
+            if confirm in ['y', 'n']:
+                break
+            print(Fore.RED + "❌ Invalid input! Please enter only 'y' or 'n'.")
+
         if confirm == 'y':
             self.setup_browser(headless=True)
             if self.open_chat():
