@@ -6,6 +6,7 @@ import os
 import re
 import sys
 import io
+import json
 from colorama import init, Fore
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -15,9 +16,9 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 
-# ✅ Fix UTF-8 encoding for input/output
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
+# Fix UTF-8 encoding for input/output
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8', errors='replace')
 
 init(autoreset=True)
 
@@ -56,6 +57,9 @@ class WhatsAppSender:
         options.add_argument('--disable-blink-features=AutomationControlled')
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)
+        # Ensure UTF-8 encoding in browser
+        options.add_argument('--lang=en-US,en')
+        options.add_argument('--accept-lang=en-US,en')
         if headless:
             options.add_argument('--headless=new')
             options.add_argument('--window-size=1920,1080')
@@ -157,8 +161,11 @@ class WhatsAppSender:
         print(Fore.WHITE + "⏰ Each message will be typed and sent individually")
         print(Fore.WHITE + "⏳ Delay: 100ms between messages\n")
 
+        # Escape the message for JavaScript - this is the key fix
+        escaped_message = json.dumps(self.message, ensure_ascii=False)[1:-1]
+        
         js_code = f"""
-        const message = `{self.message}`;
+        const message = `{escaped_message}`;
         const times = {self.count};
         const delay = 100;
         const inputBox = document.querySelector('[contenteditable="true"][data-tab="10"], [contenteditable="true"][data-tab="6"]');
